@@ -1,0 +1,12 @@
+{
+  "require": {
+    "illuminate/database": "6.19.1",
+    "illuminate/events": "6.19.1"
+  },
+  "autoload": {
+    "psr-4": {
+      "Models\\": "src/Models/",
+      "Process\\": "src/Process/"
+    }
+  }
+}
