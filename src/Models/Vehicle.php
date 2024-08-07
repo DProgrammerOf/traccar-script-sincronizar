@@ -57,4 +57,9 @@
                 ->hasMany(Diary::class, 'deviceid')
                 ->whereDate("data", $today);
         }
+
+        public function odometer_active(): bool
+        {
+            return $this->calc_hodometro === 1;
+        }
     }

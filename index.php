@@ -1,6 +1,6 @@
 <?php
     ini_set('memory_limit', '8096M');
-    $GLOBALS['date_telemetria'] = explode('/', '19/07/2024');
+    $GLOBALS['date_telemetria'] = explode('/', '10/06/2024');
 
     require_once __DIR__ . "/bootstrap.php";
 
@@ -21,30 +21,31 @@
     $GLOBALS['date_telemetria_carbon'] = \Carbon\Carbon::createFromDate(
         $GLOBALS['date_telemetria'][2], $GLOBALS['date_telemetria'][1], $GLOBALS['date_telemetria'][0]
     );
-    $Logger = new Logger(__DIR__);
-    $Init = \Carbon\Carbon::now("America/Sao_Paulo");
-    $Logger->save("Telemetry", "\n[SCRIPT DIÁRIO INICIOU EM: {$Init->format("d/m/y H:i:s")}] \n");
 
 
     /**
      * Criação das tabelas de telemetria
      * E extração das informações de cada usuário
      */
-    $users = User::all();
-    // $users = User::where('id', 5)->get();
-    if ($argv[1] == "telemetry") {
-        foreach ($users as $user) {
-            $Telemetry = new Telemetry($user, $Logger);
-            if( is_null($Telemetry->create($Eloquent)) ) {
-                $Telemetry->calculate(null);
-            }
-            $Telemetry = null;
-            sleep(1);
+    // $users = User::all();
+	try {
+    	$Logger = new Logger(__DIR__);
+    	$Init = \Carbon\Carbon::now("America/Sao_Paulo");
+    	$Logger->save("Telemetry", "\n[SCRIPT DIÁRIO INICIOU EM: {$Init->format("d/m/y H:i:s")}] \n");
+    	$client_id = $argv[1];
+    	$user = User::where('id', $client_id)->firstOrFail();
+    	$Telemetry = new Telemetry($user, $Logger);
+        if( is_null($Telemetry->create($Eloquent)) ) {
+            $Telemetry->calculate();
         }
+        $Telemetry = null;
+        sleep(1);
+    } catch (Exception $e) {
+    	echo "Error log";
+    	$Logger->save("Telemetry", "Error: {$e->getMessage()}");
+    } finally {
+    	echo "\n";
+    	$Final = \Carbon\Carbon::now("America/Sao_Paulo");
+    	$Logger->save("Telemetry", "[MEMORY TOTAL ALOCADA: " . memory_get_usage(true) . "] \n");
+    	$Logger->save("Telemetry", "[SCRIPT DIÁRIO TERMINOU EM: {$Final->format("d/m/y H:i:s")}] \n");
     }
-
-    echo "\n\n";
-
-    $Final = \Carbon\Carbon::now("America/Sao_Paulo");
-    $Logger->save("Telemetry", "[MEMORY TOTAL ALOCADA: " . memory_get_usage(true) . "] \n");
-    $Logger->save("Telemetry", "[SCRIPT DIÁRIO TERMINOU EM: {$Final->format("d/m/y H:i:s")}] \n");

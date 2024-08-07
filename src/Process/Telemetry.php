@@ -42,17 +42,114 @@
             return null;
         }
 
-        public function calculate($poi): void
+        /**
+         * Calculate distances of device by first and last odometer in day
+         * @param mixed $gprmc
+         * @return int
+         */
+        public function recalculate_distance_by_odometer($gprmc): int
         {
-            foreach ($this->user->vehicles as $vehicle) {
-                // if ($vehicle->imei !== '354522181983714') continue;
-                $daily_all = $vehicle->dailyAll;
-
-                // Calculate PoI´s
-                if (!is_null($poi) && $daily_all->count() > 0) {
-                    $poi->calculatePoi($vehicle, $daily_all);
+            $length = $gprmc->count();
+            
+            // get first odometer recv from device
+            $first_odom = null;
+            for ($i=0; $i < $length; $i++) {
+                //echo "FirstOffset: ".$i.PHP_EOL;
+                $pos = $gprmc[$i];
+                $attr = json_decode($pos->attributes);
+                if (isset($attr->odometer)) {
+                    $first_odom = (int)$attr->odometer;
+                    break;
                 }
-                
+            }
+
+            // get first odometer recv from device
+            $last_odom = null;
+            for ($i=1; $i < $length; $i++) {
+                //echo "LastOffset: ".$i.PHP_EOL;
+                $pos = $gprmc[$length-$i];
+                $attr = json_decode($pos->attributes);
+                if (isset($attr->odometer)) {
+                    $last_odom = (int)$attr->odometer;
+                    break;
+                }
+            }
+            
+            // km to meters odometer
+            return ($last_odom - $first_odom) * 1000;
+        }
+
+        /**
+         * Calculate distances of device by point-to-point in day
+         * @param mixed $gprmc
+         * @return int
+         */
+        public function recalculate_distance_by_point($gprmc): int
+        {
+            function distance($lat1, $lon1, $lat2, $lon2) {
+                $theta = $lon1 - $lon2;
+                $miles = (sin(deg2rad($lat1)) * sin(deg2rad($lat2))) + (cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * cos(deg2rad($theta)));
+                $miles = acos($miles);
+                $miles = rad2deg($miles);
+                $miles = $miles * 60 * 1.1515;
+                $feet = $miles * 5280;
+                $yards = $feet / 3;
+                $kilometers = $miles * 1.609344;
+                $meters = $kilometers * 1000;
+                return $meters;
+            }
+            $length = $gprmc->count();
+            
+            // get first odometer recv from device
+            $distance = 0;
+            $last_pos = $gprmc[0];
+            for ($i=1; $i < $length; $i++) {
+                $pos = $gprmc[$i];
+                // verify is same location
+                // if is true -> replace with last and skip to next
+                // else -> calculate distance current $pos with $last_pos
+                if ($pos && $last_pos) {
+                    [ $latitude, $longitude, $last_latitude, $last_longitude ] = [
+                        floatval($pos->latitudeDecimalDegrees), floatval($pos->longitudeDecimalDegrees),
+                        floatval($last_pos->latitudeDecimalDegrees), floatval($last_pos->longitudeDecimalDegrees)
+                    ];
+                    //
+                    $last_pos = $pos;
+                    if ( $latitude == $last_latitude && $longitude == $last_longitude ) {
+                        continue;
+                    }
+                    $distance += is_nan(
+                        distance($last_latitude, $last_longitude, $latitude, $longitude)
+                    ) === false ? distance($last_latitude, $last_longitude, $latitude, $longitude) : 0;
+                }
+            }
+            
+            return (int)$distance;
+        }
+
+        /**
+         * Calculate distance by positions from device
+         * @param mixed $daily_all
+         * @param mixed $odometer_active
+         * @return int
+         */
+        public function recalculate_diary($daily_all, $odometer_active): int
+        {
+            $type = $odometer_active ? 'odometer' : 'by_point';
+            $distance = $odometer_active 
+            ? $this->recalculate_distance_by_odometer($daily_all) 
+            : $this->recalculate_distance_by_point($daily_all);
+            $this->logger->save( "Telemetry", "recalculate_diary {$type} {$daily_all[0]->date} distance: {$distance}m\n");
+            return $distance;
+        }
+
+        public function calculate(): void
+        {
+            
+            foreach ($this->user->vehicles as $vehicle) {
+                if ($vehicle->id !== 600500) continue;
+                $this->logger->save( "Telemetry", "calculate vehicle {$vehicle->name}\n");
+                $daily_all = $vehicle->dailyAll;
                 // Calculate Telemetry
                 $daily = $daily_all->where("ligado", "S");
                 $moved = false;
@@ -149,7 +246,7 @@
                 $this->telemetry["veiculos"][] = array (
                     "id" => $vehicle->id,
                     "placa" => $vehicle->name,
-                    "km" => ( $vehicle->km_daily->count() == 0 ) ? 0 : $vehicle->km_daily[0]->km_rodado,
+                    "km" => $this->recalculate_diary($daily_all, $vehicle->odometer_active()),
                     "maxima" => $vel_max,
                     "velocidade_media" => $vel_avg,
                     "movimentou" => $moved,
@@ -163,12 +260,11 @@
                 );
                 unset($daily_all);
             }
-
             try {
                 $telemetry = new \Models\Telemetry( $this->user->id );
                 $telemetry->date = $this->date;
                 $telemetry->general = $this->telemetry;
-                $telemetry->save();
+                //$telemetry->save();
                 $this->finish();
             } catch (\PDOException $e) {
                 $this->logger->save( "Telemetry", "Telemetry error calculated [CLIENTE %d][ERROR %s]\n", $this->user->id, $e->getMessage() );
