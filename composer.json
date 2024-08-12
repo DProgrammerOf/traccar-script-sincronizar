@@ -1,7 +1,7 @@
 {
   "require": {
-    "illuminate/database": "6.19.1",
-    "illuminate/events": "6.19.1"
+    "illuminate/database": "6.20.44",
+    "illuminate/events": "6.20.44"
   },
   "autoload": {
     "psr-4": {
