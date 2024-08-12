@@ -80,8 +80,19 @@
                 }
             }
             
-            // km to meters odometer
-            return ($last_odom - $first_odom);
+            // convert unit by protocol
+            $distance = 0;
+            if (in_array($protocol, ['NT20', 'NT40'])) {
+                $distance = ($last_odom - $first_odom) * 1000;
+            }
+            else if (in_array($protocol, ['E3', 'E3+', 'STARTEK', 'CRX1', 'ST215'])) {
+                $distance = ($last_odom - $first_odom);
+            }
+            else {
+                $distance = ($last_odom - $first_odom);
+            }
+            //
+            return $distance;
         }
 
         /**
