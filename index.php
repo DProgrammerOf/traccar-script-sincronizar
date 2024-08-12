@@ -1,10 +1,10 @@
 <?php
     ini_set('memory_limit', '8096M');
-    $GLOBALS['date_telemetria'] = explode('/', '10/06/2024');
 
     require_once __DIR__ . "/bootstrap.php";
 
     use Models\User;
+    use Models\Sincronizacao;
     use Process\Telemetry;
     use Process\Logger;
 
@@ -18,9 +18,6 @@
      * -> Veículos e sua distância percorrida
      *
      */
-    $GLOBALS['date_telemetria_carbon'] = \Carbon\Carbon::createFromDate(
-        $GLOBALS['date_telemetria'][2], $GLOBALS['date_telemetria'][1], $GLOBALS['date_telemetria'][0]
-    );
 
 
     /**
@@ -28,24 +25,53 @@
      * E extração das informações de cada usuário
      */
     // $users = User::all();
+    $Date_to_sync = 'undefined';
 	try {
-    	$Logger = new Logger(__DIR__);
-    	$Init = \Carbon\Carbon::now("America/Sao_Paulo");
-    	$Logger->save("Telemetry", "\n[SCRIPT DIÁRIO INICIOU EM: {$Init->format("d/m/y H:i:s")}] \n");
+        $Today = \Carbon\Carbon::now("America/Sao_Paulo");
+    	$Logger = new Logger(__DIR__, $Today->format('Y-m-d'));
+        
+        // verify user exist
     	$client_id = $argv[1];
-    	$user = User::where('id', $client_id)->firstOrFail();
-    	$Telemetry = new Telemetry($user, $Logger);
-        if( is_null($Telemetry->create($Eloquent)) ) {
-            $Telemetry->calculate();
+        $GLOBALS['client_id'] = $client_id;
+    	$user = User::findOrFail($client_id);
+        
+        // Log init
+    	$Logger->save("Telemetry_".$client_id, "\n[SCRIPT DIÁRIO INICIOU EM: {$Today->format("d/m/y H:i:s")}] \n");
+        $Logger->save("Telemetry_".$client_id, "\n[CLIENTE ID: {$client_id}] \n");
+
+        // verify sync exist
+        $sync = new Sincronizacao();
+        $sync = $sync->running($client_id);
+        $sync->status = Sincronizacao::STATUS_RUN;
+        $sync->saveOrFail();
+
+        // calculate distances and replace telemetria
+    	$Telemetry = new Telemetry($Eloquent, $user, $Logger);
+        if( is_null($Telemetry->create()) ) {
+            $Logger->save("Telemetry_".$client_id, "##### Init Synchronize ID: {$sync->id}\n");
+            // calculate saved
+            for ($i=0; $i < 2; $i++) {
+                $Date = $Today->subDays(1)->format('Y-m-d');
+                $Logger->save("Telemetry_".$client_id, "\n\n##-> Start TelemetryCalculate to DATE = {$Date}\n");
+                if (!$Telemetry->calculate($Date)) {
+                    $sync->status = Sincronizacao::STATUS_FAIL;
+                    $Logger->save("Telemetry_".$client_id, "\CalculateRetnFalse: {$Date}");
+                    break;
+                } else {
+                    $sync->status = Sincronizacao::STATUS_FINISH;
+                }
+            }
+            $sync->finished_at = \Carbon\Carbon::now("America/Sao_Paulo");
+            $sync->saveOrFail();
         }
-        $Telemetry = null;
+        unset($Telemetry);
         sleep(1);
     } catch (Exception $e) {
-    	echo "Error log";
-    	$Logger->save("Telemetry", "Error: {$e->getMessage()}");
+        $Logger->save("Telemetry_".$client_id, "\nExceptionErrorDate: {$Date_to_sync}");
+    	$Logger->save("Telemetry_".$client_id, "\nExceptionErrorIndex: {$e->getMessage()}");
     } finally {
     	echo "\n";
     	$Final = \Carbon\Carbon::now("America/Sao_Paulo");
-    	$Logger->save("Telemetry", "[MEMORY TOTAL ALOCADA: " . memory_get_usage(true) . "] \n");
-    	$Logger->save("Telemetry", "[SCRIPT DIÁRIO TERMINOU EM: {$Final->format("d/m/y H:i:s")}] \n");
+    	$Logger->save("Telemetry_".$client_id, "\n[MEMORY TOTAL ALOCADA: " . memory_get_usage(true) . "]");
+    	$Logger->save("Telemetry_".$client_id, "\n[SCRIPT DIÁRIO TERMINOU EM: {$Final->format("d/m/y H:i:s")}] \n");
     }

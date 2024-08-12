@@ -9,9 +9,9 @@
         private $date;
         private $dir;
 
-        public function __construct($dir)
+        public function __construct($dir, $date)
         {
-            $this->date = $GLOBALS['date_telemetria_carbon'];
+            $this->date = $date;
             $this->dir = $dir;
         }
 
@@ -19,7 +19,7 @@
         {
             $text = sprintf($text, $id, $error);
             file_put_contents(
-                $this->dir . '/logs/'.$filename.'_Log_' . $this->date->format("d-m-Y"),
+                $this->dir . '/logs/'.$filename.'_Log_' . $this->date,
                 $text,
                 FILE_APPEND
             );

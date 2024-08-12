@@ -4,7 +4,7 @@
 
     class Telemetry extends \Illuminate\Database\Eloquent\Model
     {
-        protected $connection = 'tracker';
+        protected $connection = 'renan_tracker';
         protected $fillable = [ 'date', 'general', 'behavior' ];
         protected $casts = [ 'general' => 'array' ];
         public $timestamps = false;
