@@ -15,7 +15,7 @@
         private $date;
         private $logger;
         private $logger_file;
-        private Manager $eloquent;
+        private $eloquent;
 
         public function __construct(Manager $Eloquent, User $user, Logger $logger)
         {
@@ -169,7 +169,7 @@
             ? $this->recalculate_distance_by_odometer($daily_all, $vehicle->protocolo_rastreador) 
             : $this->recalculate_distance_by_point($daily_all);
             $this->logger->save( $this->logger_file, "recalculate_diary {$type} {$vehicle->name}({$vehicle->id})[prot:{$vehicle->protocolo_rastreador}] {$daily_all[0]->date} distance: {$distance}m\n");
-            echo "@by point {$this->recalculate_distance_by_point($daily_all)}\n";
+            // echo "@by point {$this->recalculate_distance_by_point($daily_all)}\n";
             return $distance;
         }
 
@@ -304,9 +304,9 @@
                  // update last telemetry if any
                  $telemetry_db = $this->eloquent->table('telemetria_cliente_'.$this->user->id);
                  if ($telemetry = $telemetry_db->whereDate('date', $Date)->first()) {
-                     echo '\n @@@UPDATE \n';
+                     echo '\n @@@UPDATE '.$telemetry->id.' \n';
                      $telemetry_db = $telemetry_db->where('id', $telemetry->id)->update([
-                         'general' => $this->telemetry
+                         'general' => json_encode($this->telemetry)
                      ]);
                  } 
                  // create new telemetry
@@ -318,16 +318,17 @@
                      $telemetry_model->saveOrFail();
                  }
                  // update last diary if any
-                 $telemetry_db = (new ModelsTelemetry($this->user->id))->updateOrCreate(
-                     ['date' => $Date],
-                     ['general' => $this->telemetry]
-                 );
                  // else create
                  foreach ($this->telemetry["veiculos"] as $telemetry_data) {
-                     $diary_db = Diary::updateOrCreate(
-                         ['deviceid' => $telemetry_data['id'], 'imei' => $telemetry_data['imei'], 'data' => $Date],
-                         ['km_rodado' => $telemetry_data['km']]
-                     );
+                    try {
+                        $diary_db = Diary::updateOrCreate(
+                            ['deviceid' => $telemetry_data['id'], 'imei' => $telemetry_data['imei'], 'data' => $Date],
+                            ['km_rodado' => $telemetry_data['km']]
+                        );
+                    } catch (\PDOException $e) {
+                        $this->logger->save( $this->logger_file, "Diary Update/Create [IMEI %s][ERROR %s]\n", $telemetry_data['imei'], $e->getMessage() );
+                        return false;
+                    }
                  }
                 $this->finish();
                 return true;
@@ -342,6 +343,7 @@
             $this->logger->save( $this->logger_file, "Telemetry calculated [CLIENTE: %d]\n", $this->user->id);
             $this->logger->save( $this->logger_file, json_encode($this->telemetry) );
             $this->logger->save( $this->logger_file, PHP_EOL);
+            $this->telemetry = array("veiculos" => []);
         }
 
     }
